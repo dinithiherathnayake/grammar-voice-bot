@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grammar Voice Bot</title>
+<style>
+  :root {
+    --ink: #1f2a44;
+    --sky: #e8f1fb;
+    --paper: #ffffff;
+    --marigold: #f2b632;
+    --line: #cfdcee;
+    --muted: #5b6784;
+    --rec: #d64545;
+    --ok-bg: #e4f5ea;
+    --ok-ink: #1d5c33;
+    --fix-bg: #fff4d9;
+    --fix-ink: #6b4a00;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--sky);
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+  }
+  .app {
+    width: 100%;
+    max-width: 680px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+  header { padding: 14px 16px; background: var(--ink); color: #fff; }
+  header h1 { font-size: 1.15rem; margin: 0; font-weight: 700; }
+  header p { margin: 2px 0 0; font-size: .8rem; color: #b9c6e4; }
+  .settings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+    font-size: .9rem;
+    color: var(--muted);
+  }
+  .settings select {
+    font: inherit;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 2px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .settings label.check { display: flex; align-items: center; gap: 6px; }
+  .settings input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--ink); }
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .msg {
+    max-width: 85%;
+    padding: 10px 14px;
+    border-radius: 16px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+  .bot { background: var(--sky); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .user { background: var(--ink); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .error { background: #fde8e6; color: #8a1c12; align-self: center; font-size: .9rem; }
+  .typing { color: var(--muted); font-style: italic; }
+  .card {
+    align-self: flex-end;
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: .92rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .card.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .card.fix { background: var(--fix-bg); color: var(--fix-ink); }
+  .card .head { font-weight: 700; margin-bottom: 2px; }
+  .card .row { margin-top: 2px; }
+  .card button.listen {
+    margin-top: 6px;
+    padding: 4px 10px;
+    font-size: .85rem;
+    background: var(--fix-ink);
+    color: #fff;
+    border-radius: 8px;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid var(--line);
+    background: var(--paper);
+  }
+  input[type="text"] {
+    flex: 1;
+    font: inherit;
+    padding: 12px 14px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    min-width: 0;
+  }
+  input:focus, select:focus, button:focus-visible {
+    outline: 3px solid var(--marigold);
+    outline-offset: 1px;
+  }
+  button {
+    font: inherit;
+    font-weight: 700;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--marigold);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #mic { background: var(--ink); color: #fff; min-width: 100px; }
+  #mic.listening { background: var(--rec); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Grammar Voice Bot</h1>
+    <p>Speak English. I check your grammar, then we keep talking.</p>
+  </header>
+
+  <div class="settings">
+    <label>Level
+      <select id="level">
+        <option value="beginner">Beginner</option>
+        <option value="intermediate">Intermediate</option>
+        <option value="advanced">Advanced</option>
+      </select>
+    </label>
+    <label>Topic
+      <select id="topic"></select>
+    </label>
+    <label class="check"><input type="checkbox" id="voiceOn" checked> Read replies aloud</label>
+    <label class="check"><input type="checkbox" id="handsFree"> Hands-free (mic opens after each reply)</label>
+  </div>
+
+  <main id="messages" aria-live="polite"></main>
+
+  <form id="chat-form">
+    <button id="mic" type="button">Speak</button>
+    <input id="input" type="text" placeholder="Speak or type in English..." autocomplete="off" maxlength="500">
+    <button id="send" type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+  const TOPICS = [
+    {"id": "daily", "group": "Daily life", "label": "Daily life", "opener": "Hi! How was your day today?"},
+    {"id": "meeting", "group": "Daily life", "label": "Meeting new people", "opener": "Hello! Nice to meet you. What is your name, and where are you from?"},
+    {"id": "friends", "group": "Daily life", "label": "Friends and weekend plans", "opener": "Hey! Do you have any plans for the weekend?"},
+    {"id": "shopping", "group": "Daily life", "label": "Shopping", "opener": "Welcome to our shop! What are you looking for today?"},
+    {"id": "restaurant", "group": "Daily life", "label": "At a restaurant", "opener": "Good evening! Table for how many people?"},
+    {"id": "travel", "group": "Daily life", "label": "Travel", "opener": "Hi! Where would you like to travel next?"},
+    {"id": "health", "group": "Daily life", "label": "At the doctor", "opener": "Hello, please sit down. What seems to be the problem today?"},
+    {"id": "directions", "group": "Daily life", "label": "Asking directions", "opener": "Hi! You look a little lost. Can I help you find something?"},
+    {"id": "uni_classes", "group": "University life", "label": "Classes and lectures", "opener": "Hi! How was your class today?"},
+    {"id": "uni_campus", "group": "University life", "label": "Campus life with classmates", "opener": "Hey! Are you going to the cafeteria? How is your semester going?"},
+    {"id": "uni_professor", "group": "University life", "label": "Talking to a professor", "opener": "Hello, come in. How can I help you today?"},
+    {"id": "uni_study", "group": "University life", "label": "Assignments and exams", "opener": "Hi! Are you ready for the exam next week?"},
+    {"id": "uni_group", "group": "University life", "label": "Group project", "opener": "Okay team, let's plan our project. Who wants to do which part?"},
+    {"id": "uni_admin", "group": "University life", "label": "Registration and advisor", "opener": "Good morning! How can I help you with your course registration?"},
+    {"id": "uni_housing", "group": "University life", "label": "Dorm and roommates", "opener": "Hi, I'm your new roommate! How are you settling in?"},
+    {"id": "uni_career", "group": "University life", "label": "Clubs and internships", "opener": "Hi! Are you thinking about joining a club or finding an internship?"},
+    {"id": "job_interview", "group": "Job and work", "label": "Job interview", "opener": "Good morning! Thank you for coming. Please tell me about yourself."},
+    {"id": "job_colleagues", "group": "Job and work", "label": "Chatting with colleagues", "opener": "Morning! Did you have a good evening? Busy day ahead?"},
+    {"id": "job_meeting", "group": "Job and work", "label": "Team meeting", "opener": "Okay, let's start the meeting. Can you give us a quick update on your work?"},
+    {"id": "job_boss", "group": "Job and work", "label": "Talking to your manager", "opener": "Hi, do you have a minute? I wanted to talk about your work this month."},
+    {"id": "job_customer", "group": "Job and work", "label": "Customer service call", "opener": "Hello, I have a problem with my order. Can you help me?"},
+    {"id": "job_presentation", "group": "Job and work", "label": "Work presentation", "opener": "Welcome, everyone. Please begin your presentation. What is your topic today?"},
+    {"id": "job_networking", "group": "Job and work", "label": "Networking event", "opener": "Hi! I don't think we have met. What do you do?"},
+    {"id": "job_it", "group": "Job and work", "label": "IT and software team", "opener": "Good morning! What are you working on in the project this week?"},
+    {"id": "job_health", "group": "Job and work", "label": "Healthcare workplace", "opener": "Hello, I am a new patient. Can you help me fill in this form?"},
+    {"id": "job_hotel", "group": "Job and work", "label": "Hotel and tourism", "opener": "Good evening! I have a reservation under the name Brown."},
+  ];
+
+  const messagesEl = document.getElementById("messages");
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+  const micBtn = document.getElementById("mic");
+  const levelEl = document.getElementById("level");
+  const topicEl = document.getElementById("topic");
+  const voiceOn = document.getElementById("voiceOn");
+  const handsFree = document.getElementById("handsFree");
+  let history = [];
+
+  // Fill the topic list, grouped
+  const topicMap = {};
+  TOPICS.forEach((t) => { topicMap[t.id] = t; });
+  [...new Set(TOPICS.map((t) => t.group))].forEach((g) => {
+    const og = document.createElement("optgroup");
+    og.label = g;
+    TOPICS.filter((t) => t.group === g).forEach((t) => {
+      const o = document.createElement("option");
+      o.value = t.id;
+      o.textContent = t.label;
+      og.appendChild(o);
+    });
+    topicEl.appendChild(og);
+  });
+
+  function addMessage(text, cls) {
+    const div = document.createElement("div");
+    div.className = "msg " + cls;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  // ---------- Speech output ----------
+  let speakId = 0;
+  function stopSpeaking() {
+    speakId++;
+    if ("speechSynthesis" in window) speechSynthesis.cancel();
+  }
+  function speak(text, done, force) {
+    if ((!voiceOn.checked && !force) || !("speechSynthesis" in window)) { if (done) done(); return; }
+    stopSpeaking();
+    const myId = ++speakId;
+    const u = new SpeechSynthesisUtterance(text.replace(/[*_`#]/g, ""));
+    u.lang = "en-US";
+    u.rate = 0.9;
+    const finish = () => { if (myId === speakId && done) done(); };
+    u.onend = finish;
+    u.onerror = finish;
+    speechSynthesis.speak(u);
+  }
+
+  voiceOn.addEventListener("change", () => {
+    if (!voiceOn.checked) { handsFree.checked = false; stopSpeaking(); }
+  });
+  handsFree.addEventListener("change", () => {
+    if (handsFree.checked) voiceOn.checked = true;
+  });
+
+  // ---------- Speech input ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false, finalText = "";
+
+  function startListening() {
+    if (!rec || listening) return;
+    stopSpeaking();
+    input.value = "";
+    finalText = "";
+    try {
+      rec.start();
+      listening = true;
+      micBtn.classList.add("listening");
+      micBtn.textContent = "Listening...";
+    } catch (err) { /* already started */ }
+  }
+
+  if (!SR) {
+    micBtn.disabled = true;
+    addMessage("Voice input needs Chrome or Edge. You can still type.", "error");
+  } else {
+    rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      let t = "";
+      for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+      input.value = t;
+      if (e.results[e.results.length - 1].isFinal) finalText = t;
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        handsFree.checked = false;
+        addMessage("Microphone is blocked. Click the lock icon in the address bar and allow the microphone.", "error");
+      } else if (e.error === "no-speech") {
+        addMessage("I did not hear anything. Press Speak and try again.", "error");
+      } else if (e.error === "network") {
+        addMessage("Voice input needs an internet connection.", "error");
+      }
+    };
+    rec.onend = () => {
+      listening = false;
+      micBtn.classList.remove("listening");
+      micBtn.textContent = "Speak";
+      if (finalText.trim()) form.requestSubmit();
+      finalText = "";
+    };
+  }
+
+  micBtn.addEventListener("click", () => {
+    if (!rec) return;
+    if (listening) rec.stop(); else startListening();
+  });
+
+  // ---------- Grammar card ----------
+  function addCard(afterEl, data) {
+    const card = document.createElement("div");
+    const head = document.createElement("div");
+    head.className = "head";
+
+    if (data.hasMistakes && data.corrected) {
+      card.className = "card fix";
+      head.textContent = "Grammar check: let's improve it";
+      card.appendChild(head);
+
+      const better = document.createElement("div");
+      better.className = "row";
+      better.textContent = "Better: " + data.corrected;
+      card.appendChild(better);
+
+      if (data.explanation) {
+        const why = document.createElement("div");
+        why.className = "row";
+        why.textContent = "Why: " + data.explanation;
+        card.appendChild(why);
+      }
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "listen";
+      btn.textContent = "Listen";
+      btn.addEventListener("click", () => speak(data.corrected, null, true));
+      card.appendChild(btn);
+    } else {
+      card.className = "card ok";
+      head.textContent = "Grammar check: perfect!";
+      card.appendChild(head);
+      if (data.explanation) {
+        const note = document.createElement("div");
+        note.className = "row";
+        note.textContent = data.explanation;
+        card.appendChild(note);
+      }
+    }
+    afterEl.after(card);
+  }
+
+  // ---------- Conversation ----------
+  function startConversation() {
+    stopSpeaking();
+    history = [];
+    messagesEl.innerHTML = "";
+    const opener = topicMap[topicEl.value].opener;
+    addMessage(opener, "bot");
+    history.push({ role: "bot", text: opener });
+  }
+  levelEl.addEventListener("change", startConversation);
+  topicEl.addEventListener("change", startConversation);
+  startConversation();
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+
+    const userDiv = addMessage(text, "user");
+    history.push({ role: "user", text });
+    input.value = "";
+    sendBtn.disabled = true;
+    const typing = addMessage("Checking grammar...", "bot typing");
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history, level: levelEl.value, topic: topicEl.value }),
+      });
+      const data = await res.json();
+      typing.remove();
+
+      if (!res.ok) {
+        addMessage(data.error || "Something went wrong.", "error");
+        history.pop();
+      } else {
+        addCard(userDiv, data);
+        addMessage(data.reply, "bot");
+        history.push({ role: "bot", text: data.reply });
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        speak(data.reply, () => { if (handsFree.checked) startListening(); });
+      }
+    } catch (err) {
+      typing.remove();
+      addMessage("Cannot reach the server. Is it running?", "error");
+      history.pop();
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "name": "grammar-voice-bot-netlify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Grammar Voice Bot for Netlify (static page + serverless function)",
+  "engines": { "node": ">=18" }
+}
